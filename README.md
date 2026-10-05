@@ -60,8 +60,8 @@ flowchart TB
         EM["🔢 Embeddings Google Gemini<br/><i>gemini-embedding-2</i>"] -.->|"ai_embedding"| PV
     end
 
-    subgraph PINE[("🗄️ Pinecone index<br/>n8n-gemini-rag")]
-        VECS[("▦▦▦ vectors")]
+    subgraph PINE["🗄️ Pinecone index"]
+        VECS[("▦▦▦ vectors · n8n-gemini-rag")]
     end
 
     subgraph QRY["② QUERY — sticky note: 'Leveraging RAG to answer'"]
