@@ -41,7 +41,7 @@ RAG is really **two pipelines that happen to share a vector database**. n8n keep
 
 | Pipeline | Trigger | Job | Runs |
 | --- | --- | --- | --- |
-| **① Ingestion** | ⏰ Schedule Trigger | Drive → chunk → embed → **upsert to Pinecone** | Every 30 min |
+| **① Ingestion** | ⏰ Schedule Trigger | Drive → embed → **insert into Pinecone** (`ns: rag-docs`) | Every 30 min |
 | **② Query** | 💬 Chat Trigger | Question → embed → **search Pinecone** → LLM answers | On demand |
 
 > ⚠️ **Most RAG bugs live in the seam between these two halves** — specifically, using *different embedding models* on each side. See [The Golden Rule](#-the-golden-rule).
@@ -55,7 +55,7 @@ flowchart TB
     subgraph ING["① INGESTION — sticky note: 'Creating vector database on Pinecone'"]
         ST["⏰ Schedule Trigger<br/><i>every 30 min</i>"] --> SF["📁 Search files and folders<br/><i>query: 'Enterprise'</i>"]
         SF --> DF["⬇️ Download file<br/><i>from Drive</i>"]
-        DF --> PV["🗄️ Pinecone Vector Store<br/><i>mode: insert</i>"]
+        DF --> PV["🗄️ Pinecone Vector Store<br/><i>insert · clear ns rag-docs</i>"]
         DL["📄 Default Data Loader<br/><i>type: binary</i>"] -.->|"ai_document"| PV
         EM["🔢 Embeddings Google Gemini<br/><i>gemini-embedding-2</i>"] -.->|"ai_embedding"| PV
     end
@@ -67,12 +67,12 @@ flowchart TB
     subgraph QRY["② QUERY — sticky note: 'Leveraging RAG to answer'"]
         CT["💬 When chat message received"] --> AG["🤖 AI Agent"]
         GL["💬 Google Gemini Chat Model"] -.->|"ai_languageModel"| AG
-        SM["🧩 Simple Memory<br/><i>key: rag-session</i>"] -.->|"ai_memory"| AG
-        RT["🔍 Pinecone Vector Store1<br/><i>mode: retrieve-as-tool</i>"] -.->|"ai_tool"| AG
+        SM["🧩 Simple Memory<br/><i>key: chatId</i>"] -.->|"ai_memory"| AG
+        RT["🔍 Pinecone Vector Store1<br/><i>retrieve-as-tool · ns: rag-docs</i>"] -.->|"ai_tool"| AG
         EM2["🔢 Embeddings Google Gemini1<br/><i>gemini-embedding-2</i>"] -.->|"ai_embedding"| RT
     end
 
-    PV ==>|"upsert vectors"| PINE
+    PV ==>|"insert into ns: rag-docs"| PINE
     RT ==>|"similarity search"| PINE
 
     style ING fill:#1a2e1a,color:#fff,stroke:#4a6a4a
@@ -111,7 +111,7 @@ This exposes the vector store to the AI Agent as a **tool** rather than hard-wir
 | **Schedule Trigger** | `scheduleTrigger` | 1.3 | Runs every 30 minutes (`interval: [{}]`) |
 | **Search files and folders** | `googleDrive` | 3 | `resource: fileFolder`, query `"Enterprise"`, root folder |
 | **Download file** | `googleDrive` | 3 | `operation: download` — fetches the binary |
-| **Pinecone Vector Store** | `vectorStorePinecone` | 1.3 | `mode: insert` → index `n8n-gemini-rag` |
+| **Pinecone Vector Store** | `vectorStorePinecone` | 1.3 | `mode: insert` → index `n8n-gemini-rag`, namespace `rag-docs`, `clearNamespace` ✅ |
 | **Default Data Loader** | `documentDefaultDataLoader` | 1.1 | `dataType: binary` — extracts text from the file |
 | **Embeddings Google Gemini** | `embeddingsGoogleGemini` | 1 | `models/gemini-embedding-2` |
 
@@ -122,17 +122,23 @@ This exposes the vector store to the AI Agent as a **tool** rather than hard-wir
 | **When chat message received** | `chatTrigger` | 1.4 | Chat entry point |
 | **AI Agent** | `agent` | 3.1 | Orchestrates search + answer (no fixed prompt) |
 | **Google Gemini Chat Model** | `lmChatGoogleGemini` | 1.1 | The answering LLM |
-| **Simple Memory** | `memoryBufferWindow` | 1.3 | `sessionIdType: customKey`, `sessionKey: rag-session` |
-| **Pinecone Vector Store1** | `vectorStorePinecone` | 1.3 | `mode: retrieve-as-tool` → index `n8n-gemini-rag` |
+| **Simple Memory** | `memoryBufferWindow` | 1.3 | `sessionIdType: customKey`, `sessionKey: ` `` ={{ chatId }} `` ✅ per-session |
+| **Pinecone Vector Store1** | `vectorStorePinecone` | 1.3 | `mode: retrieve-as-tool` → index `n8n-gemini-rag`, namespace `rag-docs` |
 | **Embeddings Google Gemini1** | `embeddingsGoogleGemini` | 1 | `models/gemini-embedding-2` |
 
 ### The tool description
 
 The vector store's description is what the agent reads to decide whether to search:
 
+**Before ([bug #5](#-known-bugs-in-this-workflow)):**
+
 > Use this tool to retrieve relevant product documentation to answer any questions on the product
 
-Same lesson as the [MCP workshop](https://github.com/Gursimaran21/NextLeap-Built-MCP-Server-and-Client-04-October-2026): **the description is the prompt.** It only works if it accurately describes what's actually in the index — see [Bugs](#-known-bugs-in-this-workflow) below.
+**After** — matches what's actually in the index:
+
+> Use this tool to search the India news podcast PRD for details about the project, its goals, features and requirements
+
+Same lesson as the [MCP workshop](https://github.com/Gursimaran21/NextLeap-Built-MCP-Server-and-Client-04-October-2026): **the description is the prompt.** The original said "product documentation" while the corpus held a news-podcast PRD, so the agent searched for documents that didn't exist — and returned confident, wrong answers rather than admitting ignorance.
 
 ### Credentials required
 
@@ -160,11 +166,24 @@ That's why this workflow has **two separate Embeddings nodes** (`Embeddings Goog
 
 ## 🚨 Known bugs in this workflow
 
-The workflow works as a teaching example, but shipping it as-is will bite you. Four real issues, found by reading the export:
+Four real issues were found by reading the export. **Four are now fixed in the committed JSON**;
+one (#3) still needs a node added by hand, because it can't be expressed as a parameter change.
 
-### 1. 🔴 The Drive search is decorative
+| # | Bug | Severity | Status |
+| --- | --- | --- | --- |
+| 1 | Drive search decorative — hardcoded `fileId` | 🔴 | ✅ **Fixed** |
+| 2 | Duplicates accumulate on every schedule run | 🔴 | ✅ **Fixed** |
+| 3 | No text splitting | 🟡 | ⚠️ **Manual step** — add a node, see below |
+| 4 | Memory shared by every user | 🟡 | ✅ **Fixed** |
+| 5 | Tool description doesn't match the corpus | 🟡 | ✅ **Fixed** |
 
-`Search files and folders` queries Drive for `"Enterprise"` — but `Download file` **ignores its input** and uses a hardcoded `fileId`:
+The originals are shown below so you can see what changed and why — this is the more useful half
+of the lesson.
+
+<details>
+<summary><b>Bug 1 (before) — the Drive search was decorative</b></summary>
+
+`Search files and folders` queries Drive for `"Enterprise"` — but `Download file` **ignored its input** and used a hardcoded `fileId`:
 
 ```json
 "fileId": {
@@ -174,56 +193,106 @@ The workflow works as a teaching example, but shipping it as-is will bite you. F
 }
 ```
 
-So the same single document is ingested every run, no matter what the search returned. The search step does nothing.
+So the same single document was ingested every run, no matter what the search returned. The search step did nothing.
 
-**Fix** — switch the File ID to expression mode:
+**Fix applied** — File ID switched to expression mode:
 
 ```js
-={{ $json.id }}
+ ={{ $json.id }}
 ```
 
 That takes the ID from each search result, making the pipeline genuinely dynamic.
 
-### 2. 🔴 Duplicates accumulate every 30 minutes
+</details>
 
-`Schedule Trigger` fires every 30 minutes with `mode: insert`. Pinecone's insert creates **new** vectors every time — it never overwrites. Your index will fill with hundreds of copies of the same document, and retrieval will return near-duplicates.
+<details>
+<summary><b>Bug 2 (before) — duplicates accumulated every 30 minutes</b></summary>
 
-**Fixes** — pick one:
+`Schedule Trigger` fires every 30 minutes with `mode: insert`. Pinecone's insert creates **new** vectors every time — it never overwrites. Your index would fill with hundreds of copies of the same document, and retrieval would return near-duplicates.
 
-- Use **upsert** mode with a deterministic ID (e.g. a hash of the file ID + chunk index) so re-runs overwrite.
-- Add a **filter** on the update path to delete old vectors for that document first.
-- Or simply run ingestion **on demand** rather than on a timer.
+**Fix applied** — both halves now share a namespace, and insertion clears it first:
 
-### 3. 🟡 No text splitting
+```json
+"options": {
+  "clearNamespace": true,
+  "pineconeNamespace": "rag-docs"
+}
+```
+
+> ⚠️ **The trap in this fix.** `clearNamespace` only fires when a namespace is *also* set. Looking
+> at the node source, the delete is guarded by `if (options.pineconeNamespace && options.clearNamespace)`
+> — set `clearNamespace` alone and it silently does nothing.
+>
+> Worse, clearing a namespace you don't own wipes **every** document in it. Use a dedicated
+> namespace name like `rag-docs`, never the default.
+>
+> And the matching `retrieve-as-tool` node must query **the same namespace**. Clear on insert but
+> read from default and you get an empty index that looks like a broken agent.
+
+**Trade-off:** this makes re-runs idempotent (each run replaces the corpus) rather than
+incremental. That's the right default for a small, single-source corpus. For real incremental
+updates you'd want deterministic vector IDs and an upsert path instead.
+
+</details>
+
+<details>
+<summary><b>Bug 3 — still open: no text splitting</b></summary>
 
 The document goes from `Default Data Loader` straight into the vector store. There is **no `Document Splitter` node**, so a large document becomes one enormous chunk — which embeds poorly and wastes tokens on every query.
 
-**Fix** — insert a **Document Splitter** (`recursiveCharacterTextSplitter`) between the loader and the vector store, set to ~1000 characters with ~100 overlap.
+**Still to do** — insert a **Document Splitter** (`recursiveCharacterTextSplitter`) between the loader and the vector store, set to ~1000 characters with ~100 overlap.
 
-### 4. 🟡 Memory is shared by every user
+This one can't be fixed by editing a parameter, because it means inserting a new node and rewiring
+the graph. That's why it's left as an exercise rather than patched silently — if this repo patched
+it for you, you'd import the workflow without ever learning to read a graph.
+
+</details>
+
+<details>
+<summary><b>Bug 4 (before) — memory was shared by every user</b></summary>
 
 ```json
 "sessionIdType": "customKey",
 "sessionKey": "rag-session"
 ```
 
-`rag-session` is a **fixed** key, so every visitor to the chat shares one conversation history. Person A's questions leak into Person B's context.
+`rag-session` is a **fixed** key, so every visitor to the chat shared one conversation history. Person A's questions leaked into Person B's context.
 
-**Fix** — key memory off the chat session instead:
+**Fix applied** — memory keyed off the chat session:
 
 ```js
-"sessionKey": "={{ $('When chat message received').item.chatId }}"
+ ={{ $('When chat message received').item.chatId }}
 ```
 
-### 5. 🟡 Tool description doesn't match the corpus
+</details>
 
-The description says *"product documentation"*, but the ingested document is `india-news-podcast-PRD.md` — a news-podcast PRD. The agent will look for product docs that don't exist.
+<details>
+<summary><b>Bug 5 (before) — tool description didn't match the corpus</b></summary>
 
-**Fix** — describe what's actually indexed:
+The description said *"product documentation"*, but the ingested document is `india-news-podcast-PRD.md` — a news-podcast PRD. The agent looked for product docs that don't exist.
 
-> Use this tool to search the project PRD and internal documentation for details about the India news podcast.
+**Fix applied** — describes what's actually indexed:
+
+> Use this tool to search the India news podcast PRD for details about the project, its goals, features and requirements
+
+</details>
 
 ---
+
+<details>
+<summary><b>Not bugs, but worth knowing</b></summary>
+
+**`models/gemini-embedding-2` is a real model.** An earlier version of this README flagged it as
+possibly non-existent. It is correct — it's Google's first multimodal embedding model, GA since
+April 2026, and handles text, images, video, audio and PDF in one space.
+
+Two things to know about it:
+
+- For **text-only** work, `gemini-embedding-001` is still available and remains the simpler choice.
+- Its embedding space is **incompatible** with `gemini-embedding-001`. If you switch between them,
+  you must re-embed the entire corpus — you cannot mix vectors from the two models in one index.
+
+</details>
 
 ## 🚀 Setup Guide
 
@@ -231,7 +300,10 @@ The description says *"product documentation"*, but the ingested document is `in
 
 1. Sign in at [app.pinecone.io](https://app.pinecone.io).
 2. **Create Index** → name it `n8n-gemini-rag` (or update the workflow to match).
-3. **Dimension** must match your embedding model. Check Google's docs for `gemini-embedding-2` and use that value — a mismatch here is the single most common RAG setup failure.
+3. **Dimension** must match your embedding model. `gemini-embedding-2` supports **128–3072** dimensions and recommends **768** or **1536** — use one of those. A mismatch here is the single most common RAG setup failure.
+
+   > 💡 Using `gemini-embedding-001` instead? It also goes up to 3072, but its embedding space is
+   > **incompatible** with `gemini-embedding-2`. Pick one and keep both Embeddings nodes on it.
 4. **Metric:** `cosine` (the usual default).
 
 > 💡 Run the ingestion half once successfully *before* building the query half. You should see vector count climb in the Pinecone console. An empty index makes the chat look broken for reasons that have nothing to do with the agent.
@@ -251,9 +323,21 @@ The description says *"product documentation"*, but the ingested document is `in
 
 ### Step 3 — Point ingestion at your own document
 
-Open **Download file → File** and pick a document from your Drive. The committed value is the placeholder `YOUR_GOOGLE_DRIVE_FILE_ID`.
+**Download file → File ID is now `={{ $json.id }}`** ([bug #1](#-known-bugs-in-this-workflow) fixed), so ingestion is driven entirely by whatever **Search files and folders** returns.
 
-> Or fix [bug #1](#1--the-drive-search-is-decorative) above and let the search drive it automatically.
+To change the source document, edit the search instead:
+
+| Node | Field | Current value | Change it to |
+| --- | --- | --- | --- |
+| **Search files and folders** | Query String | `Enterprise` | your file's name, e.g. `india-news-podcast-PRD` |
+| **Search files and folders** | Folder | `/ (Root folder)` | a specific Drive folder, to narrow the search |
+
+If the search returns nothing, check the **query matches** — Drive's `search` resource filters on
+name, and `"Enterprise"` returns only what literally contains that string.
+
+> 💡 Alternatively pin it back to one fixed file: set **Download file → File ID** back to list
+> mode and pick the document manually. That reintroduces [bug #1](#-known-bugs-in-this-workflow)
+> — the search node becomes decorative — but it's fine for a single known document.
 
 ### Step 4 — Run the ingestion half
 
@@ -263,6 +347,17 @@ Select from **Schedule Trigger** through **Pinecone Vector Store**, then hit **E
 - The embeddings node produces vectors
 - Pinecone's vector count increases
 
+> ⚠️ **Don't skip this step before activating the workflow.** If you activate first, the
+> **Schedule Trigger fires every 30 minutes on its own** and re-ingests — and with
+> `clearNamespace` on, each run **wipes and rebuilds** namespace `rag-docs`.
+>
+> Run the ingestion half manually until you're satisfied with the content, then activate. The
+> trigger's cadence is `interval: [{}]` in the export, which n8n reads as its 30-minute default;
+> change it under **Trigger Settings** if 30 minutes is wrong for you.
+
+While you're in there: **change the query in `Search files and folders`** to match your actual
+document, and confirm the **Pinecone Vector Store1** node also points at namespace `rag-docs`.
+
 ### Step 5 — Activate and chat
 
 1. Click **Active**.
@@ -271,7 +366,16 @@ Select from **Schedule Trigger** through **Pinecone Vector Store**, then hit **E
 
 ### Step 6 — Fix the known bugs
 
-Work through [Known bugs](#-known-bugs-in-this-workflow) above. At minimum, fix **#1** and **#2**, or the pipeline will quietly misbehave.
+Bugs **#1, #2, #4 and #5 are already fixed** in the JSON you just imported. **#3 (Document Splitter)
+is not** — it needs a new node wired into the graph, so it's left for you to do:
+
+> Insert a **Document Splitter** (`recursiveCharacterTextSplitter`) between
+> **Default Data Loader** and **Pinecone Vector Store**. Set chunk size ~1000 characters with
+> ~100 overlap. Connect the loader's `ai_document` output into it, then its `ai_document` output
+> into the vector store's `ai_document` input.
+
+Adding that node is also the exercise — it's the only way to learn how the `ai_*` typed
+connections differ from the normal `main` flow.
 
 ---
 
@@ -298,12 +402,13 @@ Once indexed, try questions that test whether retrieval is genuinely working:
 | --- | --- | --- |
 | `Could not find embedding model` | Invalid/unsupported model ID | Verify the exact ID in [Google's model list](https://ai.google.dev/gemini-api/docs/models) |
 | Answers ignore the document | Chat + embedding models mismatch | Confirm **both** embeddings nodes use the same model |
-| Pinecone rejects the upsert | Wrong dimension for the index | Recreate the index at the model's dimension |
+| Pinecone rejects the insert | Wrong dimension for the index | `gemini-embedding-2` supports 128–3072; recreate at 768 or 1536 |
 | Retrieval returns junk | Vectors in the index came from a different model | Delete the index and re-embed everything |
-| Near-duplicate results | [Bug #2](#2--duplicates-accumulate-every-30-minutes) — repeated inserts | Switch to upsert with deterministic IDs |
-| Same document every run | [Bug #1](#1--the-drive-search-is-decorative) — hardcoded file ID | Set File ID to `={{ $json.id }}` |
-| One giant chunk retrieved | [Bug #3](#3--no-text-splitting) | Add a Document Splitter node |
-| Chat "knows" other users' questions | [Bug #4](#4--memory-is-shared-by-every-user) | Key memory off `chatId` |
+| Near-duplicate results | [Bug #2](#-known-bugs-in-this-workflow) | ✅ Fixed — `clearNamespace` on namespace `rag-docs` |
+| Empty results despite a populated index | Namespace mismatch between the two Pinecone nodes | Both must use `rag-docs`; ✅ Fixed here |
+| Same document every run | [Bug #1](#-known-bugs-in-this-workflow) — hardcoded file ID | ✅ Fixed — `={{ $json.id }}` |
+| One giant chunk retrieved | [Bug #3](#-known-bugs-in-this-workflow) | Add a Document Splitter node — not yet done |
+| Chat "knows" other users' questions | [Bug #4](#-known-bugs-in-this-workflow) | ✅ Fixed — keyed off `chatId` |
 | Agent never calls the tool | Tool description doesn't match the question | Rewrite the description to name your actual content |
 | Empty index | Ingestion half never ran successfully | Run it manually first; check the Drive node |
 | Dimension mismatch errors | Pinecone index built for another model | Index dimension must equal the embedding model's output size |
@@ -328,9 +433,11 @@ Pinecone isn't the only option — it's just fully managed and the least setup f
 
 ## 🚀 Ideas to Extend
 
-- ➕ **Add a Document Splitter** — the single biggest quality win ([bug #3](#3--no-text-splitting))
-- 🔁 **Switch to upsert** with deterministic IDs so re-ingestion is idempotent
-- 💬 **Fix the memory key** so each chat session is isolated ([bug #4](#4--memory-is-shared-by-every-user))
+- ➕ **Add a Document Splitter** — the single biggest quality win, and the one [bug #3](#-known-bugs-in-this-workflow) still open
+- 🔁 **Switch to real upsert** — the committed fix clears the namespace, which is idempotent but not incremental. Deterministic vector IDs would let you update one document without a full rebuild
+- 🗂️ **Namespace per corpus** — `rag-docs` keeps this project separate from anything else in the index
+- 📐 **Switch to `gemini-embedding-001`** for text-only work — but re-embed the whole corpus, the spaces are incompatible
+- 🛡️ **Add a retrieval threshold** — Pinecone's `includeMetadata` plus a similarity cut-off stops the agent answering from a weak match
 - 📎 **Ingest PDFs and Notion/Confluence pages** — swap the Drive node, keep the rest
 - 🔀 **Hybrid search** — combine vector similarity with Pinecone's keyword search for better recall
 - 📝 **Add citations** — have the agent cite which passages it used, so answers are auditable

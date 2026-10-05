@@ -6,10 +6,8 @@
         "operation": "download",
         "fileId": {
           "__rl": true,
-          "value": "YOUR_GOOGLE_DRIVE_FILE_ID",
-          "mode": "list",
-          "cachedResultName": "india-news-podcast-PRD.md",
-          "cachedResultUrl": "https://drive.google.com/file/d/YOUR_GOOGLE_DRIVE_FILE_ID/view?usp=drivesdk"
+          "value": "={{ $json.id }}",
+          "mode": "list"
         },
         "options": {}
       },
@@ -31,7 +29,10 @@
           "mode": "list",
           "cachedResultName": "n8n-gemini-rag"
         },
-        "options": {}
+        "options": {
+          "clearNamespace": true,
+          "pineconeNamespace": "rag-docs"
+        }
       },
       "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
       "typeVersion": 1.3,
@@ -127,7 +128,7 @@
     {
       "parameters": {
         "sessionIdType": "customKey",
-        "sessionKey": "rag-session"
+        "sessionKey": "={{ $('When chat message received').item.chatId }}"
       },
       "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
       "typeVersion": 1.3,
@@ -141,14 +142,16 @@
     {
       "parameters": {
         "mode": "retrieve-as-tool",
-        "toolDescription": "Use this tool to retrieve relevant product documentation to answer any questions on the product",
+        "toolDescription": "Use this tool to search the India news podcast PRD for details about the project, its goals, features and requirements",
         "pineconeIndex": {
           "__rl": true,
           "value": "n8n-gemini-rag",
           "mode": "list",
           "cachedResultName": "n8n-gemini-rag"
         },
-        "options": {}
+        "options": {
+          "pineconeNamespace": "rag-docs"
+        }
       },
       "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
       "typeVersion": 1.3,
