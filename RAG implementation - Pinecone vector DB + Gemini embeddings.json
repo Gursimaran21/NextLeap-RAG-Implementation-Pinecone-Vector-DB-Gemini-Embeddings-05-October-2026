@@ -6,10 +6,10 @@
         "operation": "download",
         "fileId": {
           "__rl": true,
-          "value": "1FQI1hbCg3s-6JVju56EE2cIHVJzOICgD",
+          "value": "YOUR_GOOGLE_DRIVE_FILE_ID",
           "mode": "list",
           "cachedResultName": "india-news-podcast-PRD.md",
-          "cachedResultUrl": "https://drive.google.com/file/d/1FQI1hbCg3s-6JVju56EE2cIHVJzOICgD/view?usp=drivesdk"
+          "cachedResultUrl": "https://drive.google.com/file/d/YOUR_GOOGLE_DRIVE_FILE_ID/view?usp=drivesdk"
         },
         "options": {}
       },
@@ -20,13 +20,7 @@
         0
       ],
       "id": "4e6e4b9e-59db-46cb-a6cc-7850eb5bd702",
-      "name": "Download file",
-      "credentials": {
-        "googleDriveOAuth2Api": {
-          "id": "Vb2HuujNHyU3G8v0",
-          "name": "Google Drive account"
-        }
-      }
+      "name": "Download file"
     },
     {
       "parameters": {
@@ -46,13 +40,7 @@
         0
       ],
       "id": "cbd8fdce-818b-467b-acb4-52bf7c3f5932",
-      "name": "Pinecone Vector Store",
-      "credentials": {
-        "pineconeApi": {
-          "id": "6jxsjU2P8DXiFZYQ",
-          "name": "Pinecone account"
-        }
-      }
+      "name": "Pinecone Vector Store"
     },
     {
       "parameters": {
@@ -94,13 +82,7 @@
         208
       ],
       "id": "14647f11-2df2-43ae-82d0-5bf2ee3d79df",
-      "name": "Embeddings Google Gemini",
-      "credentials": {
-        "googlePalmApi": {
-          "id": "YN6nmH2C4r8tDHth",
-          "name": "Google Gemini(PaLM) Api account 2"
-        }
-      }
+      "name": "Embeddings Google Gemini"
     },
     {
       "parameters": {
@@ -140,13 +122,7 @@
         320
       ],
       "id": "15a2f1b8-9958-4753-95e4-3c3cbe6a8a22",
-      "name": "Google Gemini Chat Model",
-      "credentials": {
-        "googlePalmApi": {
-          "id": "YN6nmH2C4r8tDHth",
-          "name": "Google Gemini(PaLM) Api account 2"
-        }
-      }
+      "name": "Google Gemini Chat Model"
     },
     {
       "parameters": {
@@ -181,13 +157,7 @@
         320
       ],
       "id": "42adc67c-b0d3-45ec-8fc0-ac3fba294b6f",
-      "name": "Pinecone Vector Store1",
-      "credentials": {
-        "pineconeApi": {
-          "id": "6jxsjU2P8DXiFZYQ",
-          "name": "Pinecone account"
-        }
-      }
+      "name": "Pinecone Vector Store1"
     },
     {
       "parameters": {
@@ -200,13 +170,7 @@
         464
       ],
       "id": "5ea5cac1-5d99-4cac-8738-e6435231b7f8",
-      "name": "Embeddings Google Gemini1",
-      "credentials": {
-        "googlePalmApi": {
-          "id": "YN6nmH2C4r8tDHth",
-          "name": "Google Gemini(PaLM) Api account 2"
-        }
-      }
+      "name": "Embeddings Google Gemini1"
     },
     {
       "parameters": {
@@ -243,13 +207,7 @@
         0
       ],
       "id": "31739c67-1ed4-49fb-8eb9-7308a7d62dc4",
-      "name": "Search files and folders",
-      "credentials": {
-        "googleDriveOAuth2Api": {
-          "id": "Eeu9TjoV6IR2Fy2y",
-          "name": "Google Drive account 3"
-        }
-      }
+      "name": "Search files and folders"
     },
     {
       "parameters": {
@@ -389,8 +347,7 @@
   },
   "versionId": "e2b13fe9-078a-4640-9d90-fd4ada534586",
   "meta": {
-    "templateCredsSetupCompleted": true,
-    "instanceId": "6089fa415c55765801aa79a5bee2005464d7cf177f40340b0b199ddff0a06d13"
+    "templateCredsSetupCompleted": true
   },
   "id": "4q5ieBTEmUXMddVI",
   "tags": [
